@@ -1,8 +1,9 @@
-import random
 import math
+import random
 import numpy as np
 import pandas as pd
 import evaluation as ev
+from sklearn.linear_model import LogisticRegression
 
 def random_model_generator(total_pixel:int, slit_num:int, image:list):
     # Max beta value is 50 MICRO and beta is set to max value.
@@ -92,9 +93,9 @@ def calculate_derror_over_dbeta(psi_N_conj:complex, fun_dpsi_over_dbeta,
 
     return result
 
-def optimize(psi_N_conj, centerpos1: list, centerpos2: list, delta_a_j: float, 
-            L_01: float, L_12: float, L_23: float, beta1: list, beta2: list, 
-            y_pred, y_target):
+def optimize(digit, psi_N_conj, centerpos1: list, centerpos2: list, 
+             delta_a_j: float, L_01: float, L_12: float, L_23: float,
+             beta1: list, beta2: list, y_pred, y_target):
     epoch = 0
     error = 999
 
@@ -102,8 +103,9 @@ def optimize(psi_N_conj, centerpos1: list, centerpos2: list, delta_a_j: float,
     epochs = list()
 
     learning_rate = 0.01
-    opt_df = pd.DataFrame(columns=['Learning rate', 'Epoch', 'loss', 'L_01', 
-                                     'L_12', 'L_23', 'Beta1', 'Beta2'])
+    opt_df = pd.DataFrame(columns=['Image digit', 'Learning rate', 'Epoch', 
+                                   'loss', 'L_01', 'L_12', 'L_23', 'Beta1', 
+                                   'Beta2'])
     while (epoch <= 50) and (error > 9e-4):
 
         loss = calculate_loss_values(centerpos1, centerpos2, delta_a_j, L_01, 
@@ -157,12 +159,60 @@ def optimize(psi_N_conj, centerpos1: list, centerpos2: list, delta_a_j: float,
         epoch += 1
 
         
-        opt_result = {'Learning rate': learning_rate, 
+        opt_result = {'Image digit': digit, 'Learning rate': learning_rate, 
                       'Epoch': epoch, 'loss': errors[-1], 'L_01': L_01, 
                       'L_12': L_12, 'L_23': L_23, 'Beta1': beta1, 
                       'Beta2': beta2}
 
-        print('Learning rate: {} Epoch {}. loss: {}'.format(learning_rate, epoch, errors[-1]))
+        print('Learning rate: {} Epoch {}. loss: {}'.format(learning_rate, 
+                                                            epoch, errors[-1]))
     
     opt_df.append(opt_result)
     return opt_result
+
+def train_test(total_pixel, slit_num, image:dict, y_target:dict):
+
+    # For first step
+    df = random_model_generator(total_pixel, slit_num, image.get(0))
+    df.to_csv('model_for_{}.csv'.format(0))
+    L_01:float = 100*math.pow(10,-2)
+    L_12:float = 100*math.pow(10,-2)
+    L_23:float = 100*math.pow(10,-2)
+    centerpos1 = df.loc[df['LayerIndex'] == 1,'CenterPosition'].values
+    centerpos2 = df.loc[df['LayerIndex'] == 2,'CenterPosition'].values
+    delta_a_j:float = math.pow(10,-5)
+    beta1 = df.loc[df['LayerIndex'] == 1,'Beta'].values
+    beta2 = df.loc[df['LayerIndex'] == 2,'Beta'].values
+
+    a_i, y_pred, energy, psi_N = ev.psi_N(ev.g_zero, ev.g_one_or_g_two, 
+                                          ev.g_one_or_g_two,
+                                          centerpos1, centerpos2, delta_a_j, 
+                                          L_01, L_12, L_23, beta1, beta2)
+    psi_N_conj = np.conj(psi_N)
+    opt_result = optimize(0, psi_N_conj, centerpos1, centerpos2, delta_a_j, 
+                          L_01, L_12, L_23, beta1, beta2, y_pred, 
+                          y_target.get(0))
+
+    #For other images
+    for i in range(1, 10):
+        df = random_model_generator(total_pixel, slit_num, image.get(i))
+        df.to_csv('model_for_{}.csv'.format(i))
+        L_01:float = opt_result['L_01'].iloc[-1]
+        L_12:float = opt_result['L_12'].iloc[-1]
+        L_23:float = opt_result['L_23'].iloc[-1]
+        centerpos1 = df.loc[df['LayerIndex'] == 1,'CenterPosition'].values
+        centerpos2 = df.loc[df['LayerIndex'] == 2,'CenterPosition'].values
+        delta_a_j:float = math.pow(10,-5)
+        beta1 = opt_result['Beta1'].iloc[-1]
+        beta2 = opt_result['Beta2'].iloc[-1]
+
+        a_i, y_pred, energy, psi_N = ev.psi_N(ev.g_zero, ev.g_one_or_g_two, 
+                                              ev.g_one_or_g_two, centerpos1, 
+                                              centerpos2, delta_a_j, L_01, L_12,
+                                              L_23, beta1, beta2)
+        psi_N_conj = np.conj(psi_N)
+        opt_result = optimize(i, psi_N_conj, centerpos1, centerpos2, delta_a_j,
+                              L_01, L_12, L_23, beta1, beta2, y_pred, 
+                              y_target.get(i))
+    
+    return sum(opt_result['loss']) / len(opt_result['loss'])

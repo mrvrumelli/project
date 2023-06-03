@@ -271,5 +271,5 @@ def dy_pred_over_dbeta(psi_N_conj, func_dpsi_over_dbeta, centerpos1, centerpos2,
     """   
     dpsi_N = func_dpsi_over_dbeta(centerpos1, centerpos2, delta_a_j, L_01, L_12,
                                   L_23, beta1,beta2)
-    result = 2* (dpsi_N * psi_N_conj)
+    result = 2 * (dpsi_N * psi_N_conj)
     return result.real
